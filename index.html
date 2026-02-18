@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DHL Auditor V0.2</title>
+  <link rel="stylesheet" href="assets/css/main.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">AGQ</div>
+      <div class="titles">
+        <h1>DHL Auditor V0.2</h1>
+        <p>Client-side · IndexedDB · ES Modules</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn ghost" id="btnBackup">Backup</button>
+      <button class="btn danger ghost" id="btnResetDb">Reset DB</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Módulos">
+    <button class="tab" data-route="#/tariffs" role="tab">Tarifas</button>
+    <button class="tab" data-route="#/invoices" role="tab">Facturas</button>
+    <button class="tab" data-route="#/audit" role="tab">Dashboard / Auditoría</button>
+  </nav>
+
+  <section class="status-bar">
+    <div class="status-item">
+      <span class="k">DB</span>
+      <span class="v" id="dbStatus">—</span>
+    </div>
+    <div class="status-item">
+      <span class="k">Tarifas</span>
+      <span class="v" id="tariffCount">—</span>
+    </div>
+    <div class="status-item">
+      <span class="k">Facturas</span>
+      <span class="v" id="invoiceCount">—</span>
+    </div>
+    <div class="status-item">
+      <span class="k">Auditorías</span>
+      <span class="v" id="auditCount">—</span>
+    </div>
+    <div class="status-item grow">
+      <span class="k">Última acción</span>
+      <span class="v" id="lastAction">—</span>
+    </div>
+  </section>
+
+  <main class="container" id="appRoot" aria-live="polite"></main>
+
+  <!-- Modal root (reutilizable) -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Modal</h3>
+        <button class="btn ghost" id="modalClose">✖</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toastRoot" aria-live="assertive" aria-relevant="additions"></div>
+
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
