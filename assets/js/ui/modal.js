@@ -4,7 +4,7 @@ const bodyEl = document.getElementById('modalBody');
 const footerEl = document.getElementById('modalFooter');
 const closeBtn = document.getElementById('modalClose');
 
-// Estado inicial: oculto sí o sí (no dependemos de [hidden])
+// Estado inicial: oculto sí o sí
 backdrop.style.display = 'none';
 
 function stop(e) {
@@ -18,7 +18,6 @@ closeBtn.addEventListener('click', (e) => {
 });
 
 backdrop.addEventListener('click', (e) => {
-  // cerrar solo si clicas el fondo (no dentro del modal)
   if (e.target === backdrop) closeModal();
 });
 
