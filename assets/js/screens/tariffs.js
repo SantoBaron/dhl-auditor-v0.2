@@ -36,6 +36,7 @@ export async function screenTariffs(root) {
               <th>Periodo</th>
               <th>Origen</th>
               <th>Filas</th>
+              <th>Mapa zonas</th>
               <th>Schema</th>
               <th>Creada</th>
               <th></th>
@@ -51,7 +52,7 @@ export async function screenTariffs(root) {
 
   const tbody = ui.querySelector('#tariffRows');
   if (!list.length) {
-    tbody.appendChild(el(`<tr><td colspan="7" style="color:var(--muted)">Sin tarifas aún.</td></tr>`));
+    tbody.appendChild(el(`<tr><td colspan="8" style="color:var(--muted)">Sin tarifas aún.</td></tr>`));
   } else {
     for (const t of list) {
       const tr = el(`
@@ -60,6 +61,7 @@ export async function screenTariffs(root) {
           <td><span class="badge">${escapeHtml(t.periodFrom)} → ${escapeHtml(t.periodTo)}</span></td>
           <td>${escapeHtml(t?.source?.type || 'n/a')}</td>
           <td>${escapeHtml(String(t?.normalized?.rowCount ?? 0))}</td>
+          <td>${escapeHtml(String(t?.normalized?.zoneMapCount ?? Object.keys(t?.normalized?.zoneMapping || {}).length))}</td>
           <td><span class="badge ok">v${t.schemaVersion}</span></td>
           <td>${escapeHtml(isoDate(t.createdAt))}</td>
           <td style="text-align:right">
@@ -138,7 +140,7 @@ export async function screenTariffs(root) {
     });
   });
 
-  ui.querySelectorAll('[data-del]').forEach(btn => {
+  ui.querySelectorAll('[data-del]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await repoTariffs.del(btn.dataset.del);
       toast('Tarifa eliminada', btn.dataset.del, 'warn');
@@ -151,12 +153,14 @@ export async function screenTariffs(root) {
 
 function openEstimatorModal(tariff) {
   const rows = tariff.normalized.rows;
+  const zoneMapping = tariff.normalized.zoneMapping || {};
   const services = [...new Set(rows.map((r) => r.service).filter(Boolean))].sort();
   const zones = [...new Set(rows.map((r) => r.zone).filter(Boolean))].sort();
 
   const body = `
     <div class="card" style="margin:0">
       <p><b>${escapeHtml(tariff.label)}</b> · ${escapeHtml(tariff.periodFrom)} → ${escapeHtml(tariff.periodTo)}</p>
+      <p style="margin-top:6px; color:var(--muted)">Mapa de zonas cargado: <b>${escapeHtml(String(Object.keys(zoneMapping).length))} países</b>.</p>
       <div class="row">
         <div class="col">
           <label>Servicio</label>
@@ -164,6 +168,10 @@ function openEstimatorModal(tariff) {
             <option value="">(Todos)</option>
             ${services.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
           </select>
+        </div>
+        <div class="col">
+          <label>País destino (ISO2)</label>
+          <input id="estCountry" class="est-input" type="text" maxlength="2" placeholder="ES" />
         </div>
         <div class="col">
           <label>Zona</label>
@@ -189,12 +197,15 @@ function openEstimatorModal(tariff) {
 
   const selService = document.getElementById('estService');
   const selZone = document.getElementById('estZone');
+  const inpCountry = document.getElementById('estCountry');
   const inpWeight = document.getElementById('estWeight');
   const result = document.getElementById('estResult');
 
   const recalc = () => {
     const service = selService.value;
-    const zone = selZone.value;
+    const country = String(inpCountry.value || '').trim().toUpperCase().slice(0, 2);
+    const mappedZone = zoneMapping[country] || '';
+    const zone = selZone.value || mappedZone;
     const weight = Number(inpWeight.value || 0);
 
     const filtered = rows.filter((r) => {
@@ -204,9 +215,7 @@ function openEstimatorModal(tariff) {
     });
 
     const exact = filtered.find((r) => weight >= r.weightFromKg && weight <= r.weightToKg);
-    const nearest = exact || filtered
-      .slice()
-      .sort((a, b) => Math.abs(center(a) - weight) - Math.abs(center(b) - weight))[0];
+    const nearest = exact || filtered.slice().sort((a, b) => Math.abs(center(a) - weight) - Math.abs(center(b) - weight))[0];
 
     if (!nearest) {
       result.innerHTML = '<p style="margin:0">No hay filas que coincidan con los filtros.</p>';
@@ -214,14 +223,20 @@ function openEstimatorModal(tariff) {
     }
 
     const mode = exact ? 'Coincidencia exacta por rango' : 'Sin rango exacto, fila más cercana';
+    const countryMapMsg = country
+      ? (mappedZone ? `País ${escapeHtml(country)} mapeado a zona ${escapeHtml(mappedZone)}.` : `País ${escapeHtml(country)} sin mapeo en la tarifa.`)
+      : 'Sin país informado (se usa zona manual o todas).';
+
     result.innerHTML = `
       <p style="margin:0 0 6px"><b>Precio estimado:</b> <span class="badge ok">${escapeHtml(String(nearest.priceEur))} EUR</span></p>
       <p style="margin:0"><b>${escapeHtml(mode)}</b></p>
-      <p style="margin:6px 0 0">Servicio: ${escapeHtml(nearest.service)} · Zona: ${escapeHtml(nearest.zone)} · Rango: ${escapeHtml(String(nearest.weightFromKg))} → ${escapeHtml(String(nearest.weightToKg))} kg</p>
+      <p style="margin:6px 0 0">Servicio: ${escapeHtml(nearest.service)} · Zona aplicada: ${escapeHtml(zone || nearest.zone)} · Rango: ${escapeHtml(String(nearest.weightFromKg))} → ${escapeHtml(String(nearest.weightToKg))} kg</p>
+      <p style="margin:6px 0 0">${countryMapMsg}</p>
       <p style="margin:6px 0 0; color:var(--muted)">Filas filtradas: ${escapeHtml(String(filtered.length))} / ${escapeHtml(String(rows.length))}</p>
     `;
   };
 
+  inpCountry.addEventListener('input', recalc);
   selService.addEventListener('change', recalc);
   selZone.addEventListener('change', recalc);
   inpWeight.addEventListener('input', recalc);
@@ -250,6 +265,7 @@ function previewBody({ tariff, previewRows, warnings, fileName }) {
       <p><b>Carrier:</b> ${escapeHtml(tariff.carrier)} · <b>Moneda:</b> ${escapeHtml(tariff.currency)}</p>
       <p><b>Periodo:</b> ${escapeHtml(tariff.periodFrom)} → ${escapeHtml(tariff.periodTo)}</p>
       <p><b>Filas normalizadas:</b> ${escapeHtml(String(tariff.normalized.rowCount))}</p>
+      <p><b>Países mapeados a zona:</b> ${escapeHtml(String(tariff.normalized.zoneMapCount ?? Object.keys(tariff.normalized.zoneMapping || {}).length))}</p>
       <h3 style="margin:14px 0 8px">Muestra de filas (máx. 8)</h3>
       <div style="overflow:auto; max-height:280px">
         <table class="table preview-table">
@@ -274,9 +290,11 @@ function previewBody({ tariff, previewRows, warnings, fileName }) {
 function collectWarnings(tariff) {
   const warnings = [];
   const rows = tariff?.normalized?.rows || [];
+  const zoneMapCount = tariff?.normalized?.zoneMapCount ?? Object.keys(tariff?.normalized?.zoneMapping || {}).length;
 
   if (tariff.currency !== 'EUR') warnings.push(`Moneda detectada ${tariff.currency}. Revisa conversión antes de auditar.`);
   if (!rows.length) warnings.push('No hay filas normalizadas.');
+  if (!zoneMapCount) warnings.push('No se ha detectado mapa de zonas por país (country -> zone).');
 
   let invalidWeights = 0;
   let negativePrices = 0;

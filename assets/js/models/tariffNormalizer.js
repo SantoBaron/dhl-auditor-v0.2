@@ -25,7 +25,7 @@ export function normalizeTariffJson(raw, { fileName = null } = {}) {
   const normalizedRows = rows.map((r, i) => ({
     id: String(r.id || `row-${i + 1}`),
     service: str(r.service || r.product || r.serviceName || raw.service || raw.product || 'GENERAL'),
-    zone: str(r.zone || r.area || r.region || r.countryZone || 'GEN'),
+    zone: str(r.zone || r.area || r.region || r.countryZone || 'GEN').toUpperCase(),
     weightFromKg: num(r.weightFrom ?? r.minWeight ?? r.fromKg ?? r.weight ?? 0),
     weightToKg: num(r.weightTo ?? r.maxWeight ?? r.toKg ?? r.weight ?? r.max ?? r.minWeight ?? 0),
     priceEur: num(r.priceEur ?? r.price ?? r.rate ?? r.amount ?? r.total ?? 0)
@@ -34,6 +34,8 @@ export function normalizeTariffJson(raw, { fileName = null } = {}) {
   if (!normalizedRows.length) {
     throw new Error('No se encontraron líneas tarifarias válidas (price/rate/amount) en el JSON');
   }
+
+  const zoneMapping = collectZoneMapping(raw);
 
   const label = str(raw.label || raw.name || raw.tariffName || raw.title || `Tarifa ${periodFrom} → ${periodTo}`);
   const carrier = str(raw.carrier || raw.provider || raw.company || 'DHL');
@@ -52,6 +54,8 @@ export function normalizeTariffJson(raw, { fileName = null } = {}) {
     normalized: {
       format: 'agq_tariff_v1',
       rowCount: normalizedRows.length,
+      zoneMapCount: Object.keys(zoneMapping).length,
+      zoneMapping,
       rows: normalizedRows
     },
     source: {
@@ -86,6 +90,53 @@ function collectRateRows(raw) {
   }
 
   return [];
+}
+
+function collectZoneMapping(raw) {
+  const out = {};
+
+  // object map, e.g. { ES: 'EU1', PT: 'EU1' }
+  const objectCandidates = [raw.zoneMapping, raw.zoneMap, raw.countryToZone];
+  for (const m of objectCandidates) {
+    if (m && typeof m === 'object' && !Array.isArray(m)) {
+      for (const [country, zone] of Object.entries(m)) {
+        const c = countryCode(country);
+        const z = str(zone).toUpperCase();
+        if (c && z) out[c] = z;
+      }
+    }
+  }
+
+  // array of pairs, e.g. [{country:'ES', zone:'EU1'}]
+  const pairCandidates = [raw.zonePairs, raw.countryZone, raw.countryZones];
+  for (const arr of pairCandidates) {
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      const c = countryCode(item?.country || item?.iso || item?.countryCode || item?.destination);
+      const z = str(item?.zone || item?.area || item?.region).toUpperCase();
+      if (c && z) out[c] = z;
+    }
+  }
+
+  // zones array, e.g. [{zone:'EU1', countries:['ES','PT']}]
+  const zonesArray = raw.zones || raw.zoneDefinitions || raw.zoneGroups;
+  if (Array.isArray(zonesArray)) {
+    for (const z of zonesArray) {
+      const zoneName = str(z?.zone || z?.name || z?.id).toUpperCase();
+      const countries = Array.isArray(z?.countries) ? z.countries : [];
+      for (const cRaw of countries) {
+        const c = countryCode(cRaw);
+        if (c && zoneName) out[c] = zoneName;
+      }
+    }
+  }
+
+  return out;
+}
+
+function countryCode(v) {
+  const c = str(v).toUpperCase().slice(0, 2);
+  return /^[A-Z]{2}$/.test(c) ? c : '';
 }
 
 function asDate(v) {
