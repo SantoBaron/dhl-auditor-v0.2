@@ -4,6 +4,7 @@ import { repoTariffs, repoInvoices, repoAuditRuns } from '../storage/repo.js';
 import { newTariffPlaceholder } from '../models/tariff.js';
 import { normalizeTariffJson } from '../models/tariffNormalizer.js';
 import { toast } from '../ui/toast.js';
+import { openModal, closeModal } from '../ui/modal.js';
 import { mountStatusBar, setLastAction } from '../ui/status.js';
 
 export async function screenTariffs(root) {
@@ -15,7 +16,7 @@ export async function screenTariffs(root) {
     <div>
       <div class="card">
         <h2>Tarifas</h2>
-        <p>Importa JSON de tarifas y lo normalizaremos para que siempre quede en el mismo esquema interno.</p>
+        <p>Importa JSON de tarifas y previsualiza su normalización antes de guardarlo.</p>
         <div class="row" style="margin-top:10px">
           <button class="btn primary" id="btnAddTariff">+ Crear tarifa (placeholder)</button>
           <label class="btn" style="display:inline-flex; align-items:center; cursor:pointer">
@@ -87,12 +88,28 @@ export async function screenTariffs(root) {
       const text = await f.text();
       const raw = JSON.parse(text);
       const tariff = normalizeTariffJson(raw, { fileName: f.name });
-      await repoTariffs.add(tariff);
+      const previewRows = tariff.normalized.rows.slice(0, 8);
+      const warnings = collectWarnings(tariff);
 
-      toast('Tarifa importada', `${tariff.label} · ${tariff.normalized.rowCount} filas`, 'ok');
-      setLastAction(`Tarifa JSON importada: ${f.name}`);
-      await mountStatusBar({ repoTariffs, repoInvoices, repoAuditRuns, force: true });
-      await screenTariffs(root);
+      openModal({
+        title: 'Previsualización de tarifa',
+        body: previewBody({ tariff, previewRows, warnings, fileName: f.name }),
+        footerButtons: [
+          { label: 'Cancelar', className: 'btn ghost', onClick: closeModal },
+          {
+            label: 'Confirmar importación',
+            className: 'btn primary',
+            onClick: async () => {
+              await repoTariffs.add(tariff);
+              closeModal();
+              toast('Tarifa importada', `${tariff.label} · ${tariff.normalized.rowCount} filas`, 'ok');
+              setLastAction(`Tarifa JSON importada: ${f.name}`);
+              await mountStatusBar({ repoTariffs, repoInvoices, repoAuditRuns, force: true });
+              await screenTariffs(root);
+            }
+          }
+        ]
+      });
     } catch (err) {
       console.error(err);
       toast('Error importando tarifa', err?.message || String(err), 'bad');
@@ -118,6 +135,70 @@ export async function screenTariffs(root) {
       await screenTariffs(root);
     });
   });
+}
+
+function previewBody({ tariff, previewRows, warnings, fileName }) {
+  const rowsHtml = previewRows.map((r) => `
+    <tr>
+      <td>${escapeHtml(r.service)}</td>
+      <td>${escapeHtml(r.zone)}</td>
+      <td>${escapeHtml(String(r.weightFromKg))}</td>
+      <td>${escapeHtml(String(r.weightToKg))}</td>
+      <td>${escapeHtml(String(r.priceEur))}</td>
+    </tr>
+  `).join('');
+
+  const warningsHtml = warnings.length
+    ? `<ul class="preview-warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+    : '<p style="color:var(--ok)">Sin advertencias detectadas.</p>';
+
+  return `
+    <div class="card" style="margin:0">
+      <p><b>Archivo:</b> ${escapeHtml(fileName || '—')}</p>
+      <p><b>Label:</b> ${escapeHtml(tariff.label)}</p>
+      <p><b>Carrier:</b> ${escapeHtml(tariff.carrier)} · <b>Moneda:</b> ${escapeHtml(tariff.currency)}</p>
+      <p><b>Periodo:</b> ${escapeHtml(tariff.periodFrom)} → ${escapeHtml(tariff.periodTo)}</p>
+      <p><b>Filas normalizadas:</b> ${escapeHtml(String(tariff.normalized.rowCount))}</p>
+      <h3 style="margin:14px 0 8px">Muestra de filas (máx. 8)</h3>
+      <div style="overflow:auto; max-height:280px">
+        <table class="table preview-table">
+          <thead>
+            <tr>
+              <th>Servicio</th>
+              <th>Zona</th>
+              <th>Peso desde (kg)</th>
+              <th>Peso hasta (kg)</th>
+              <th>Precio EUR</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <h3 style="margin:14px 0 8px">Chequeos rápidos</h3>
+      ${warningsHtml}
+    </div>
+  `;
+}
+
+function collectWarnings(tariff) {
+  const warnings = [];
+  const rows = tariff?.normalized?.rows || [];
+
+  if (tariff.currency !== 'EUR') warnings.push(`Moneda detectada ${tariff.currency}. Revisa conversión antes de auditar.`);
+  if (!rows.length) warnings.push('No hay filas normalizadas.');
+
+  let invalidWeights = 0;
+  let negativePrices = 0;
+
+  for (const r of rows) {
+    if (r.weightToKg < r.weightFromKg) invalidWeights += 1;
+    if (r.priceEur < 0) negativePrices += 1;
+  }
+
+  if (invalidWeights) warnings.push(`Hay ${invalidWeights} fila(s) con weightToKg < weightFromKg.`);
+  if (negativePrices) warnings.push(`Hay ${negativePrices} fila(s) con precio negativo.`);
+
+  return warnings;
 }
 
 function escapeHtml(s) {

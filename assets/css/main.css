@@ -174,3 +174,13 @@ body{
 }
 .toast .t{ font-weight: 750; margin-bottom: 4px; }
 .toast .m{ color: var(--muted); }
+
+
+.preview-warnings{
+  margin: 0;
+  padding-left: 18px;
+  color: var(--warn);
+}
+.preview-table td, .preview-table th{
+  white-space: nowrap;
+}
