@@ -156,6 +156,7 @@ function openEstimatorModal(tariff) {
   const zoneMapping = tariff.normalized.zoneMapping || {};
   const services = [...new Set(rows.map((r) => r.service).filter(Boolean))].sort();
   const zones = [...new Set(rows.map((r) => r.zone).filter(Boolean))].sort();
+  const countryOptions = buildCountryOptions(zoneMapping);
 
   const body = `
     <div class="card" style="margin:0">
@@ -170,8 +171,11 @@ function openEstimatorModal(tariff) {
           </select>
         </div>
         <div class="col">
-          <label>País destino (ISO2)</label>
-          <input id="estCountry" class="est-input" type="text" maxlength="2" placeholder="ES" />
+          <label>País destino (buscar por nombre o ISO2)</label>
+          <input id="estCountry" class="est-input" type="text" list="countryOptions" placeholder="España o ES" />
+          <datalist id="countryOptions">
+            ${countryOptions.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')}
+          </datalist>
         </div>
         <div class="col">
           <label>Zona</label>
@@ -203,7 +207,7 @@ function openEstimatorModal(tariff) {
 
   const recalc = () => {
     const service = selService.value;
-    const country = String(inpCountry.value || '').trim().toUpperCase().slice(0, 2);
+    const country = parseCountryIso(inpCountry.value || '');
     const mappedZone = zoneMapping[country] || '';
     const zone = selZone.value || mappedZone;
     const weight = Number(inpWeight.value || 0);
@@ -310,12 +314,50 @@ function collectWarnings(tariff) {
   return warnings;
 }
 
+function buildCountryOptions(zoneMapping) {
+  const countries = Object.keys(zoneMapping || {}).sort();
+  return countries.map((iso) => ({
+    value: `${iso} - ${countryName(iso)}`,
+    label: `Zona ${zoneMapping[iso]}`
+  }));
+}
+
+function parseCountryIso(input) {
+  const txt = String(input || '').trim().toUpperCase();
+  if (!txt) return '';
+
+  const direct = txt.match(/^[A-Z]{2}$/);
+  if (direct) return direct[0];
+
+  const pref = txt.match(/^([A-Z]{2})\s*-/);
+  if (pref) return pref[1];
+
+  const byName = Object.entries(COUNTRY_NAMES).find(([, name]) => name.toUpperCase() === txt);
+  return byName ? byName[0] : '';
+}
+
+function countryName(iso2) {
+  return COUNTRY_NAMES[iso2] || iso2;
+}
+
+const COUNTRY_NAMES = {
+  ES: 'España', PT: 'Portugal', FR: 'Francia', DE: 'Alemania', IT: 'Italia', NL: 'Países Bajos',
+  BE: 'Bélgica', LU: 'Luxemburgo', IE: 'Irlanda', AT: 'Austria', CH: 'Suiza', GB: 'Reino Unido',
+  PL: 'Polonia', CZ: 'República Checa', SK: 'Eslovaquia', HU: 'Hungría', RO: 'Rumanía', BG: 'Bulgaria',
+  DK: 'Dinamarca', SE: 'Suecia', NO: 'Noruega', FI: 'Finlandia', EE: 'Estonia', LV: 'Letonia',
+  LT: 'Lituania', SI: 'Eslovenia', HR: 'Croacia', GR: 'Grecia', CY: 'Chipre', MT: 'Malta',
+  US: 'Estados Unidos', CA: 'Canadá', MX: 'México', BR: 'Brasil', AR: 'Argentina', CL: 'Chile',
+  CO: 'Colombia', PE: 'Perú', CN: 'China', JP: 'Japón', KR: 'Corea del Sur', IN: 'India',
+  AE: 'Emiratos Árabes Unidos', SA: 'Arabia Saudí', MA: 'Marruecos', DZ: 'Argelia', TN: 'Túnez',
+  ZA: 'Sudáfrica', AU: 'Australia', NZ: 'Nueva Zelanda'
+};
+
 function center(row) {
   return (Number(row.weightFromKg || 0) + Number(row.weightToKg || 0)) / 2;
 }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
