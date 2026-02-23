@@ -63,6 +63,7 @@ export async function screenTariffs(root) {
           <td><span class="badge ok">v${t.schemaVersion}</span></td>
           <td>${escapeHtml(isoDate(t.createdAt))}</td>
           <td style="text-align:right">
+            <button class="btn ghost" data-view="${t.id}">Ver / Estimar</button>
             <button class="btn danger ghost" data-del="${t.id}">Eliminar</button>
           </td>
         </tr>
@@ -126,6 +127,17 @@ export async function screenTariffs(root) {
     await screenTariffs(root);
   });
 
+  ui.querySelectorAll('[data-view]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const tariff = await repoTariffs.get(btn.dataset.view);
+      if (!tariff?.normalized?.rows?.length) {
+        toast('Sin datos normalizados', 'Esta tarifa no tiene filas para estimar', 'warn');
+        return;
+      }
+      openEstimatorModal(tariff);
+    });
+  });
+
   ui.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', async () => {
       await repoTariffs.del(btn.dataset.del);
@@ -135,6 +147,85 @@ export async function screenTariffs(root) {
       await screenTariffs(root);
     });
   });
+}
+
+function openEstimatorModal(tariff) {
+  const rows = tariff.normalized.rows;
+  const services = [...new Set(rows.map((r) => r.service).filter(Boolean))].sort();
+  const zones = [...new Set(rows.map((r) => r.zone).filter(Boolean))].sort();
+
+  const body = `
+    <div class="card" style="margin:0">
+      <p><b>${escapeHtml(tariff.label)}</b> · ${escapeHtml(tariff.periodFrom)} → ${escapeHtml(tariff.periodTo)}</p>
+      <div class="row">
+        <div class="col">
+          <label>Servicio</label>
+          <select id="estService" class="est-input">
+            <option value="">(Todos)</option>
+            ${services.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col">
+          <label>Zona</label>
+          <select id="estZone" class="est-input">
+            <option value="">(Todas)</option>
+            ${zones.map((z) => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col">
+          <label>Peso (kg)</label>
+          <input id="estWeight" class="est-input" type="number" step="0.001" min="0" value="0.5" />
+        </div>
+      </div>
+      <div id="estResult" class="card" style="margin-top:10px; margin-bottom:0"></div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Tarifa cargada · visor y estimador',
+    body,
+    footerButtons: [{ label: 'Cerrar', className: 'btn ghost', onClick: closeModal }]
+  });
+
+  const selService = document.getElementById('estService');
+  const selZone = document.getElementById('estZone');
+  const inpWeight = document.getElementById('estWeight');
+  const result = document.getElementById('estResult');
+
+  const recalc = () => {
+    const service = selService.value;
+    const zone = selZone.value;
+    const weight = Number(inpWeight.value || 0);
+
+    const filtered = rows.filter((r) => {
+      if (service && r.service !== service) return false;
+      if (zone && r.zone !== zone) return false;
+      return true;
+    });
+
+    const exact = filtered.find((r) => weight >= r.weightFromKg && weight <= r.weightToKg);
+    const nearest = exact || filtered
+      .slice()
+      .sort((a, b) => Math.abs(center(a) - weight) - Math.abs(center(b) - weight))[0];
+
+    if (!nearest) {
+      result.innerHTML = '<p style="margin:0">No hay filas que coincidan con los filtros.</p>';
+      return;
+    }
+
+    const mode = exact ? 'Coincidencia exacta por rango' : 'Sin rango exacto, fila más cercana';
+    result.innerHTML = `
+      <p style="margin:0 0 6px"><b>Precio estimado:</b> <span class="badge ok">${escapeHtml(String(nearest.priceEur))} EUR</span></p>
+      <p style="margin:0"><b>${escapeHtml(mode)}</b></p>
+      <p style="margin:6px 0 0">Servicio: ${escapeHtml(nearest.service)} · Zona: ${escapeHtml(nearest.zone)} · Rango: ${escapeHtml(String(nearest.weightFromKg))} → ${escapeHtml(String(nearest.weightToKg))} kg</p>
+      <p style="margin:6px 0 0; color:var(--muted)">Filas filtradas: ${escapeHtml(String(filtered.length))} / ${escapeHtml(String(rows.length))}</p>
+    `;
+  };
+
+  selService.addEventListener('change', recalc);
+  selZone.addEventListener('change', recalc);
+  inpWeight.addEventListener('input', recalc);
+  recalc();
 }
 
 function previewBody({ tariff, previewRows, warnings, fileName }) {
@@ -199,6 +290,10 @@ function collectWarnings(tariff) {
   if (negativePrices) warnings.push(`Hay ${negativePrices} fila(s) con precio negativo.`);
 
   return warnings;
+}
+
+function center(row) {
+  return (Number(row.weightFromKg || 0) + Number(row.weightToKg || 0)) / 2;
 }
 
 function escapeHtml(s) {

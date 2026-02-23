@@ -184,3 +184,18 @@ body{
 .preview-table td, .preview-table th{
   white-space: nowrap;
 }
+
+.est-input{
+  width: 100%;
+  border:1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0,46,99,.34);
+  color: var(--text);
+  padding: 8px 10px;
+}
+label{
+  display:block;
+  margin-bottom:6px;
+  color:var(--muted);
+  font-size:12px;
+}
