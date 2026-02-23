@@ -45,6 +45,11 @@ export async function openDb() {
 
 function promisifyRequest(req) {
   return new Promise((resolve, reject) => {
+    if (req.readyState === 'done') {
+      resolve(req.result);
+      return;
+    }
+
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
