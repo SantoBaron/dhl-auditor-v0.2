@@ -121,8 +121,7 @@ async function bootstrap() {
     }
   });
 
-  // Forzar ruta inicial siempre a tarifas (para evitar “vacíos” por hash raro)
-  navigate('#/tariffs');
+  // initRouter ya hace el primer render con la hash actual o #/tariffs
 }
 
 bootstrap().catch((e) => renderFatal(e, 'bootstrap'));

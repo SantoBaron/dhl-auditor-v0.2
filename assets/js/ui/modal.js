@@ -5,6 +5,7 @@ const footerEl = document.getElementById('modalFooter');
 const closeBtn = document.getElementById('modalClose');
 
 // Estado inicial: oculto sí o sí
+backdrop.hidden = true;
 backdrop.style.display = 'none';
 
 function stop(e) {
@@ -37,11 +38,13 @@ export function openModal({ title, body, footerButtons = [] }) {
     footerEl.appendChild(btn);
   }
 
+  backdrop.hidden = false;
   backdrop.style.display = 'flex';
 }
 
 export function closeModal() {
   backdrop.style.display = 'none';
+  backdrop.hidden = true;
   titleEl.textContent = 'Modal';
   bodyEl.innerHTML = '';
   footerEl.innerHTML = '';
